@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import{parseTrades,mergeTrades,stats,signalMatch,csvRows,sampleCSV,seed}from'../src/model.js';
+test('Long and short P&L after fees',()=>{const r=parseTrades(sampleCSV);assert.equal(r.errors.length,0);assert.equal(r.trades[0].pnl,348);assert.equal(r.trades[1].pnl,-101)});
+test('Reimport skips duplicates within and across files',()=>{const r=parseTrades(sampleCSV);const a=mergeTrades([],r.trades);const b=mergeTrades(a.trades,[...r.trades,...r.trades]);assert.equal(b.added,0);assert.equal(b.duplicates,4);assert.equal(b.trades.length,2)});
+test('IDs scoped by student and account',()=>{const t=parseTrades(sampleCSV).trades[0];assert.equal(mergeTrades([t],[{...t,student:'other'},{...t,account:'other'}]).added,2)});
+test('Rejects impossible dates and blank quantities',()=>{const r=parseTrades(sampleCSV+'BAD,DEMO,2026-02-30,09:35,AAPL,long,1,100,101,0\nBAD2,DEMO,2026-09-30,09:35,AAPL,long,,100,101,0\n');assert.equal(r.errors.length,2);assert.equal(r.trades.length,2)});
+test('Quoted CSV commas, newlines, escaped quotes',()=>assert.deepEqual(csvRows('a,b\r\n"x,y","say ""hi""\nnext"'),[['a','b'],['x,y','say "hi"\nnext']]));
+test('Missing headers and malformed quotes',()=>{assert.throws(()=>parseTrades('symbol,pnl\nAAPL,10'),/Missing column/);assert.throws(()=>csvRows('"broken'),/Unclosed/)});
+test('Empty statistics and break-even denominator',()=>{assert.equal(stats([]).winRate,0);assert.equal(stats([{pnl:100},{pnl:-50},{pnl:0}]).pnl,50);assert.equal(stats([{pnl:100},{pnl:0}]).winRate,50)});
+test('Signal timing boundaries and direction',()=>{const t={date:'2026-09-30',time:'09:35',symbol:'AAPL',side:'long'},s={symbol:'AAPL',side:'long'};for(const [time,label]of[['09:30','On time'],['09:29','Late'],['09:41','Early']])assert.equal(signalMatch(t,[{...s,timestamp:`2026-09-30T${time}:00Z`}]).label,label);assert.equal(signalMatch(t,[{...s,side:'short',timestamp:'2026-09-30T09:35:00Z'}]),null)});
+test('Sample P&L reconciles to prices and fees',()=>{for(const t of seed().trades)assert.equal(Math.round(((t.exit-t.entry)*t.quantity-t.fees)*100)/100,t.pnl)});
